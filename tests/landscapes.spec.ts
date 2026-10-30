@@ -8,6 +8,8 @@ test.beforeEach(async ({ page }) => {
     if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ biome: 'pine-river', seed: 1729, autoJourney: true }));
     const violations: string[] = (window as any).__backgroundPaintViolations = [];
     (window as any).__backgroundGlyphPaints = 0;
+    (window as any).__backgroundGlyphCharacters = 0;
+    (window as any).__backgroundScaleViolations = [];
     const proto = CanvasRenderingContext2D.prototype;
     const originalFill = proto.fill;
     proto.fill = function (...args: any[]) {
@@ -24,11 +26,18 @@ test.beforeEach(async ({ page }) => {
     const originalImage = proto.drawImage;
     proto.drawImage = function (...args: any[]) {
       if (this.canvas.dataset.renderLayer) (window as any).__backgroundGlyphPaints++;
+      if (this.canvas.dataset.renderLayer && args[0] instanceof HTMLCanvasElement && args[0].dataset.renderLayer === 'ascii-tile' && args.length === 5) {
+        const transform = this.getTransform();
+        const dx = Math.abs(args[0].width - args[3] * Math.hypot(transform.a, transform.b));
+        const dy = Math.abs(args[0].height - args[4] * Math.hypot(transform.c, transform.d));
+        if (dx > 1 || dy > 1) (window as any).__backgroundScaleViolations.push({ dx, dy });
+      }
       if (this.canvas.dataset.renderLayer && (!(args[0] instanceof HTMLCanvasElement) || !args[0].dataset.renderLayer)) violations.push('non-glyph image source');
       return originalImage.apply(this, args as any);
     };
     const originalText = proto.fillText;
     proto.fillText = function (text: string, ...args: any[]) {
+      if (this.canvas.dataset.renderLayer) (window as any).__backgroundGlyphCharacters += text.replace(/\s/g, '').length;
       if (this.canvas.dataset.renderLayer && /[^\x00-\x7f]/.test(text)) violations.push('non-ASCII text');
       return originalText.apply(this, [text, ...args] as any);
     };
@@ -60,7 +69,9 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(errors).toEqual([]);
     expect(await page.evaluate(() => (window as any).__backgroundPaintViolations)).toEqual([]);
-    expect(await page.evaluate(() => (window as any).__backgroundGlyphPaints)).toBeGreaterThan(100);
+    expect(await page.evaluate(() => (window as any).__backgroundGlyphPaints)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => (window as any).__backgroundGlyphCharacters)).toBeGreaterThan(100);
+    expect(await page.evaluate(() => (window as any).__backgroundScaleViolations)).toEqual([]);
     await expect(page.locator('.scene-grain')).toHaveCSS('background-image', 'none');
     await expect(page.locator('.scene-fallback')).toBeHidden();
   });
@@ -144,6 +155,40 @@ test('renderer records real frame cost and keeps caches bounded after regenerati
   expect(after.chunks).toBeLessThanOrEqual(48);
   expect(after.glyphCaches).toBeLessThanOrEqual(42);
   expect(await page.locator('body').getAttribute('data-failed')).toBeNull();
-  await writeFile(`${artifacts}/render-metrics.json`, JSON.stringify({ browser: 'Chromium, headless, cloud CPU', viewport: '1440×560', before: metrics, after }, null, 2));
+  await writeFile(`${artifacts}/render-metrics.json`, JSON.stringify({ browser: 'Chromium, headless, default rendering backend', viewport: '1440×560', before: metrics, after }, null, 2));
   console.log(`Renderer command cost: mean ${metrics.averageRenderMs.toFixed(2)}ms, p95 ${metrics.p95RenderMs.toFixed(2)}ms; ${metrics.chunks} live chunks.`);
 });
+
+
+for (const dpr of [1.25, 2]) {
+  test.describe(`native text resolution at DPR ${dpr}`, () => {
+    test.use({ deviceScaleFactor: dpr });
+    test('low quality keeps native pixels and readable text; cached frames stay smooth', async ({ page }) => {
+      test.setTimeout(60000);
+      await rendererFixture(page);
+      await page.waitForTimeout(2600);
+      const before = await page.evaluate(() => (window as any).renderer.getDiagnostics());
+      expect(before.dpr).toBe(dpr);
+      expect(before.fontSize).toBeGreaterThanOrEqual(10);
+      expect(before.effectScale).toBe(1);
+      expect(before.frameRate).toBeGreaterThan(45);
+      expect(before.p95RenderMs).toBeLessThan(32);
+      await page.waitForTimeout(300);
+      const cached = await page.evaluate(() => (window as any).renderer.getDiagnostics());
+      expect(cached.layerBuilds).toBe(before.layerBuilds);
+      await page.evaluate(() => (window as any).renderer.setMotion(false));
+      for (const quality of ['low', 'high']) {
+        await page.evaluate((value) => (window as any).renderer.setQuality(value), quality);
+        await page.waitForTimeout(100);
+        const current = await page.evaluate(() => (window as any).renderer.getDiagnostics());
+        expect(current.dpr).toBe(dpr);
+        expect(current.fontSize).toBe(before.fontSize);
+        expect(current.effectScale).toBe(1);
+      }
+      const after = await page.evaluate(() => (window as any).renderer.getDiagnostics());
+      expect(await page.evaluate(() => (window as any).__backgroundScaleViolations)).toEqual([]);
+      expect(await page.locator('.landscape-canvas').evaluate((canvas: HTMLCanvasElement) => Math.abs(canvas.width - canvas.getBoundingClientRect().width * devicePixelRatio))).toBeLessThanOrEqual(1);
+      await writeFile(`${artifacts}/native-dpr-${dpr}.json`, JSON.stringify({ before, after }, null, 2));
+    });
+  });
+}

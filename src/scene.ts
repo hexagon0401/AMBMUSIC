@@ -1,399 +1,309 @@
-import { Glyphs } from './glyphs';
 import { Companion, type Activity } from './companion';
-import { CHUNK_WIDTH, DEPTH_FACTORS, HORIZON, WORLD_HEIGHT, TRAVEL_SPEED, Journey, TerrainGenerator, biome, freshSeed, lerp, mixColor, palette, readSceneConfig, SCENE_STORAGE, type BiomeId, type Blend, type SceneConfig, type Theme, type TerrainChunk } from './terrain';
+import { CHUNK_WIDTH, Journey, TerrainGenerator, biome, readSceneConfig, freshSeed, lerp, SCENE_STORAGE, type BiomeId, type Blend, type SceneConfig, type Theme } from './terrain';
 export type { Activity, Theme };
 export type Quality = 'auto' | 'low' | 'high';
 type Options = { config?: SceneConfig; onChange?: (state: SceneConfig, transitioning: boolean) => void };
-type Diagnostics = { quality: Quality; effectiveQuality: Quality; chunks: number; glyphCaches: number; renderedFrames: number; averageRenderMs: number; p95RenderMs: number; time: number; state: SceneConfig; blend: Blend };
+type TextTile = { canvas: HTMLCanvasElement; width: number; height: number };
+type Diagnostics = { quality: Quality; effectiveQuality: Quality; chunks: number; glyphCaches: number; renderedFrames: number; averageRenderMs: number; p95RenderMs: number; time: number; state: SceneConfig; blend: Blend; dpr: number; effectScale: number; fontSize: number; frameRate: number; layerBuilds: number; cacheBytes: number };
+const TILE = CHUNK_WIDTH;
+const MONO = 'ui-monospace, SFMono-Regular, Consolas, monospace';
 
+/** Native-DPR text tiles and cached silhouettes: the live loop only composites layers. */
 export class RiverScene {
   private landscape = document.createElement('canvas');
   private companion = document.createElement('canvas');
   private foreground = document.createElement('canvas');
-  private clouds = document.createElement('canvas');
-  private water = document.createElement('canvas');
   private ctx: CanvasRenderingContext2D;
   private sprite: CanvasRenderingContext2D;
   private front: CanvasRenderingContext2D;
-  private glyphs: Glyphs;
   private friend = new Companion();
   private generator: TerrainGenerator;
   private journey: Journey;
+  private tiles = new Map<string, TextTile>();
+  private masks = new Map<string, Path2D>();
+  private usedTiles = new Set<string>();
+  private usedMasks = new Set<string>();
   private observer: ResizeObserver;
   private width = 0;
   private height = 0;
-  private viewWidth = 0;
-  private scale = 1;
+  private dpr = 1;
+  private fontSize = 10;
+  private cellWidth = 6;
+  private rowHeight = 9;
+  private bank = 0;
   private time = 0;
-  private last = 0;
-  private lastCloud = -Infinity;
-  private lastWater = -Infinity;
+  private lastTime = 0;
+  private lastPaint = 0;
+  private lastSpriteY = NaN;
+  private lastSpritePhase = '';
   private raf = 0;
   private dirty = true;
   private disposed = false;
   private motion = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-  private activity: Activity = 'rest';
+  private activity: Activity = 'fish';
   private quality: Quality = 'auto';
-  private constrained = false;
-  private get detail(): Quality { return this.quality === 'auto' && this.constrained ? 'low' : this.quality; }
   private stateKey = '';
   private renderedFrames = 0;
   private timings: number[] = [];
-  private onVisibility = () => { this.last = 0; };
+  private frameTimes: number[] = [];
+  private layerBuilds = 0;
+  private onVisibility = () => { this.lastTime = this.lastPaint = 0; };
 
-  constructor(private host: HTMLElement, private onFailure: () => void, private theme: Theme = 'light', private options: Options = {}) {
-    const ctx = this.landscape.getContext('2d', { willReadFrequently: true });
-    const sprite = this.companion.getContext('2d', { willReadFrequently: true });
-    const front = this.foreground.getContext('2d', { willReadFrequently: true });
+  constructor(private host: HTMLElement, private onFailure: () => void, private theme: Theme = 'dark', private options: Options = {}) {
+    const ctx = this.landscape.getContext('2d');
+    const sprite = this.companion.getContext('2d');
+    const front = this.foreground.getContext('2d');
     if (!ctx || !sprite || !front) throw new Error('Canvas 2D unavailable');
     this.ctx = ctx; this.sprite = sprite; this.front = front;
-    for (const [name, canvas] of [['landscape', this.landscape], ['clouds', this.clouds], ['water', this.water], ['foreground', this.foreground]] as const) canvas.dataset.renderLayer = name;
-    this.glyphs = new Glyphs(ctx);
-    this.journey = new Journey(options.config ?? readSceneConfig());
-    this.generator = new TerrainGenerator(this.journey.config.seed);
-    this.landscape.className = 'landscape-canvas';
-    this.landscape.setAttribute('role', 'img');
-    this.companion.className = 'companion-canvas';
-    this.companion.setAttribute('role', 'img');
-    this.companion.setAttribute('aria-label', '배 위의 작은 노란 2D 픽셀 친구. 점눈 두 개, 팔 두 개, 다리 네 개');
-    this.foreground.className = 'foreground-canvas';
+    this.landscape.className = 'landscape-canvas'; this.companion.className = 'companion-canvas'; this.foreground.className = 'foreground-canvas';
+    this.landscape.dataset.renderLayer = 'landscape'; this.foreground.dataset.renderLayer = 'foreground';
+    this.landscape.setAttribute('role', 'img'); this.companion.setAttribute('role', 'img');
+    this.companion.setAttribute('aria-label', '검은 점눈과 짧은 네 다리를 가진 노란 픽셀 친구가 작은 금빛 배에서 낚시하고 있습니다.');
     this.foreground.setAttribute('aria-hidden', 'true');
+    this.journey = new Journey(options.config ?? readSceneConfig()); this.generator = new TerrainGenerator(this.journey.config.seed);
     host.append(this.landscape, this.companion, this.foreground);
-    this.observer = new ResizeObserver(() => this.resize());
-    this.observer.observe(host);
+    this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(host);
     document.addEventListener('visibilitychange', this.onVisibility);
-    this.resize();
-    this.notify();
-    this.raf = requestAnimationFrame(this.tick);
+    this.resize(); this.notify(); this.raf = requestAnimationFrame(this.tick);
   }
-
   get config(): SceneConfig { return { ...this.journey.config, biome: this.journey.blend.to }; }
-  setActivity(activity: Activity) { this.activity = activity; this.companion.dataset.pose = activity; this.dirty = true; }
-  setMotion(enabled: boolean) { this.motion = enabled; this.last = 0; this.dirty = true; }
-  setQuality(quality: Quality) { this.quality = quality; this.constrained = false; this.configureEffects(); }
-  setTheme(theme: Theme) { this.theme = theme; this.glyphs.clear(); this.invalidate(); }
+  setActivity(activity: Activity) { this.activity = activity; this.companion.dataset.pose = activity; this.dirty = true; this.lastSpritePhase = ''; }
+  setMotion(enabled: boolean) { this.motion = enabled; this.lastTime = this.lastPaint = 0; this.dirty = true; }
+  setQuality(quality: Quality) { this.quality = quality; this.invalidate(); }
+  setTheme(theme: Theme) { this.theme = theme; this.invalidate(); }
   setLandscape(id: BiomeId) { this.journey.select(id); this.generator.clear(); this.invalidate(); this.notify(); }
-  setAutoJourney(enabled: boolean) { this.journey.setAuto(enabled); this.invalidate(); this.notify(); }
-  regenerate() {
-    this.journey.config = { ...this.journey.config, seed: freshSeed() };
-    this.generator = new TerrainGenerator(this.journey.config.seed);
-    this.invalidate(); this.notify();
-  }
-  getDiagnostics(): Diagnostics {
-    const sorted = [...this.timings].sort((a, b) => a - b);
-    return { quality: this.quality, effectiveQuality: this.detail, chunks: this.generator.chunks.size, glyphCaches: this.glyphs.size, renderedFrames: this.renderedFrames, averageRenderMs: this.timings.reduce((a, b) => a + b, 0) / (this.timings.length || 1), p95RenderMs: sorted[Math.floor(sorted.length * 0.95)] ?? 0, time: this.time, state: this.config, blend: this.journey.blend };
-  }
-  private invalidate() { this.dirty = true; this.lastCloud = this.lastWater = -Infinity; }
+  setAutoJourney(enabled: boolean) { this.journey.setAuto(enabled); this.dirty = true; this.notify(); }
+  regenerate() { this.journey.config = { ...this.journey.config, seed: freshSeed() }; this.generator = new TerrainGenerator(this.journey.config.seed); this.invalidate(); this.notify(); }
+  private get paper() { return this.theme === 'dark' ? '#222222' : '#f4f3ed'; }
+  private get inks() { return this.theme === 'dark' ? ['#70716f', '#a8a9a5', '#e0e0d9'] : ['#a0a39a', '#6c7267', '#30382f']; }
+  private invalidate() { this.tiles.clear(); this.masks.clear(); this.dirty = true; this.lastSpritePhase = ''; }
   private notify() {
-    const state = this.config;
-    const blend = this.journey.blend;
-    const transitioning = blend.from !== blend.to;
-    const key = `${state.biome}:${state.seed}:${state.autoJourney}:${transitioning}`;
+    const state = this.config, blend = this.journey.blend;
+    const transition = blend.from !== blend.to;
+    const key = `${state.biome}:${state.seed}:${state.autoJourney}:${transition}`;
     if (key === this.stateKey) return;
-    this.stateKey = key;
-    this.host.dataset.biome = state.biome;
-    this.host.dataset.seed = String(state.seed);
-    this.host.dataset.transitioning = String(transitioning);
-    this.landscape.setAttribute('aria-label', `${biome(state.biome).name}. 구름과 반짝이는 물, 여러 깊이의 ASCII 풍경이 왼쪽에서 오른쪽으로 흐릅니다.`);
-    try { localStorage.setItem(SCENE_STORAGE, JSON.stringify(state)); } catch { /* Persistence is optional. */ }
-    this.options.onChange?.(state, transitioning);
+    this.stateKey = key; this.host.dataset.biome = state.biome; this.host.dataset.seed = String(state.seed); this.host.dataset.transitioning = String(transition);
+    this.landscape.setAttribute('aria-label', `${biome(state.biome).name}. 선명한 흑백 ASCII 구름과 수면, 검은 숲 실루엣이 겹쳐진 풍경.`);
+    try { localStorage.setItem(SCENE_STORAGE, JSON.stringify(state)); } catch { /* Optional browser storage. */ }
+    this.options.onChange?.(state, transition);
   }
   private resize() {
     const { width, height } = this.host.getBoundingClientRect();
     if (!width || !height) return;
-    this.width = width; this.height = height;
-    this.scale = height / WORLD_HEIGHT;
-    this.viewWidth = width / this.scale;
-    const dpr = Math.min(devicePixelRatio, 1.5);
+    const dpr = Math.min(3, Math.max(1, devicePixelRatio));
+    if (this.width === Math.round(width) && this.height === Math.round(height) && this.dpr === dpr) return;
+    this.width = Math.round(width); this.height = Math.round(height); this.dpr = dpr;
+    // Geometry adapts to the viewport; font size is always expressed in CSS pixels.
+    this.fontSize = this.width < 600 ? 11 : 10;
+    this.cellWidth = this.fontSize * 0.6;
+    this.rowHeight = this.width < 600 ? 10 : 9;
+    this.bank = Math.round(this.height * 0.755);
     for (const canvas of [this.landscape, this.companion, this.foreground]) {
-      canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
-      const context = canvas.getContext('2d', { willReadFrequently: true })!;
-      context.setTransform(dpr * this.scale, 0, 0, dpr * this.scale, 0, 0);
-      context.imageSmoothingEnabled = false;
+      canvas.width = Math.round(this.width * dpr); canvas.height = Math.round(this.height * dpr);
+      const context = canvas.getContext('2d')!;
+      context.setTransform(dpr, 0, 0, dpr, 0, 0); context.imageSmoothingEnabled = false;
     }
-    this.glyphs.clear();
-    this.configureEffects();
-  }
-  private configureEffects() {
-    if (!this.viewWidth) return;
-    const ratio = this.detail === 'high' ? 0.9 : this.detail === 'low' ? 0.45 : 0.65;
-    this.clouds.width = Math.ceil(this.viewWidth * ratio); this.clouds.height = Math.ceil(250 * ratio);
-    this.water.width = Math.ceil(this.viewWidth * ratio); this.water.height = Math.ceil(WORLD_HEIGHT * ratio);
-    for (const canvas of [this.clouds, this.water]) {
-      const context = canvas.getContext('2d', { willReadFrequently: true })!;
-      context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      context.imageSmoothingEnabled = false;
-    }
+    this.host.style.backgroundColor = this.paper;
+    this.front.clearRect(0, 0, this.width, this.height);
     this.invalidate();
   }
-
-  private drawClouds(blend: Blend) {
-    const ctx = this.clouds.getContext('2d', { willReadFrequently: true })!;
-    ctx.clearRect(0, 0, this.viewWidth + 1, 250);
-    const colors = palette(blend, this.theme);
-    const cover = lerp(biome(blend.from).cloud, biome(blend.to).cloud, blend.amount);
-    const cell = this.detail === 'low' ? 15 : this.detail === 'high' ? 8 : 11;
-    const color = mixColor(colors.sky, this.theme === 'dark' ? '#bccbc3' : '#8baca5', 0.65);
+  private snap(value: number) { return Math.round(value * this.dpr) / this.dpr; }
+  private texture(key: string, height: number, render: (ctx: CanvasRenderingContext2D) => void): TextTile {
+    this.usedTiles.add(key);
+    const existing = this.tiles.get(key); if (existing) return existing;
+    const canvas = document.createElement('canvas'); canvas.dataset.renderLayer = 'ascii-tile';
+    canvas.width = Math.round(TILE * this.dpr); canvas.height = Math.round(Math.ceil(height) * this.dpr);
+    const context = canvas.getContext('2d')!;
+    context.scale(this.dpr, this.dpr); context.font = `${this.fontSize}px ${MONO}`;
+    context.textBaseline = 'alphabetic'; context.imageSmoothingEnabled = false;
+    if ('letterSpacing' in context) context.letterSpacing = `${this.cellWidth - context.measureText('M').width}px`;
+    render(context);
+    const tile = { canvas, width: TILE, height: Math.ceil(height) };
+    this.tiles.set(key, tile); this.layerBuilds++; return tile;
+  }
+  private hash(x: number, y: number, salt = 0) {
+    let n = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ this.generator.seed ^ salt;
+    n = Math.imul(n ^ n >>> 13, 1274126177); return ((n ^ n >>> 16) >>> 0) / 4294967296;
+  }
+  private drawRows(ctx: CanvasRenderingContext2D, height: number, index: number, sample: (wx: number, y: number) => number, salt: number) {
+    const columns = Math.ceil(TILE / this.cellWidth);
+    const glyphs = salt >= 1100 ? '.:;-=+~' : '.:;-=+*01il';
+    for (let y = this.rowHeight; y < height; y += this.rowHeight) {
+      const rows = [Array(columns).fill(' '), Array(columns).fill(' '), Array(columns).fill(' ')];
+      for (let column = 0; column < columns; column++) {
+        const wx = index * TILE + column * this.cellWidth;
+        const density = sample(wx, y);
+        if (density <= 0) continue;
+        const r = this.hash(Math.floor(wx / this.cellWidth), Math.floor(y / this.rowHeight), salt);
+        if (r > Math.min(1, density)) continue;
+        const shade = density > 0.78 ? 2 : density > 0.43 ? 1 : 0;
+        rows[shade][column] = glyphs[Math.min(glyphs.length - 1, Math.floor((r * 0.55 + density * 0.45) * glyphs.length))];
+      }
+      rows.forEach((row, shade) => {
+        if (!row.some((char) => char !== ' ')) return;
+        ctx.fillStyle = this.inks[shade]; ctx.fillText(row.join(''), 0, y);
+      });
+    }
+  }
+  private drawSky(blend: Blend) {
+    const kind = blend.amount > 0.5 ? blend.to : blend.from;
+    const cloudCover = lerp(biome(blend.from).cloud, biome(blend.to).cloud, blend.amount);
     for (let layer = 0; layer < 2; layer++) {
-      const center = layer ? 136 : 63;
-      const drift = this.time * (layer ? 3.4 : 1.3);
-      for (let y = 20 + layer * 65; y < 115 + layer * 100; y += cell) for (let x = -cell; x < this.viewWidth + cell; x += cell * 0.7) {
-        const nx = (x - drift) * (layer ? 0.006 : 0.0038);
-        const ny = y * 0.018;
-        const t = this.time * 0.008;
-        let n = this.generator.noise3D(nx, ny, t) * 0.62 + this.generator.noise3D(nx * 2.1, ny * 2.1, t * 1.2) * 0.26;
-        if (this.detail !== 'low') n += this.generator.noise3D(nx * 4.3, ny * 4.3, t * 1.4) * 0.12;
-        const density = n + cover * 0.50 - Math.abs(y - center) / (layer ? 140 : 110);
-        if (density > 0.02) {
-          ctx.globalAlpha = Math.min(0.8, density * (layer ? 1.3 : 0.7));
-          this.glyphs.stamp(ctx, color, cell * 0.8, Math.min(1, density * 1.6), x, y);
-        }
+      const shift = this.time * (layer ? 4.5 : 1.6);
+      const first = Math.floor(-shift / TILE), last = Math.floor((this.width - shift) / TILE);
+      const height = Math.ceil(this.bank + 10);
+      for (let index = first; index <= last; index++) {
+        const key = `sky:${layer}:${index}:${kind}:${this.theme}:${Math.round(cloudCover * 8)}`;
+        const tile = this.texture(key, height, (context) => this.drawRows(context, height, index, (x, y) => {
+          const ny = y / this.height;
+          const broad = this.generator.noise2D(x * (layer ? 0.0028 : 0.0015), ny * 3.3 + layer * 31);
+          const detail = this.quality === 'low' ? 0 : this.generator.noise2D(x * 0.009, ny * 9 + layer * 17) * 0.10 + (this.quality === 'high' ? this.generator.noise2D(x * 0.018, ny * 16 + layer * 23) * 0.05 : 0);
+          const band = Math.sin(y * (layer ? 0.50 : 0.63)) * 0.14;
+          const fade = layer ? 0.69 - ny * 1.1 : 1.10 - ny * 1.55;
+          return Math.max(0, broad * 0.45 + detail + band + fade + cloudCover * 0.15);
+        }, layer * 271));
+        this.ctx.globalAlpha = layer ? 0.47 : 0.92;
+        this.ctx.drawImage(tile.canvas, this.snap(index * TILE + shift), 0, tile.width, tile.height);
       }
     }
-    ctx.globalAlpha = 1;
+    this.ctx.globalAlpha = 1;
   }
-
-  private drawTerrain(blend: Blend) {
-    const ctx = this.ctx;
-    const colors = palette(blend, this.theme);
-    const a = Math.round(blend.amount * 24) / 24;
-    const quantized = palette({ ...blend, amount: a }, this.theme);
-    const font = this.detail === 'low' ? 9 : this.detail === 'high' ? 6 : 7;
-    this.generator.beginFrame();
-    for (let depth = 0; depth < 3; depth++) {
-      const shift = this.time * TRAVEL_SPEED * DEPTH_FACTORS[depth];
-      const first = Math.floor(-shift / CHUNK_WIDTH);
-      const last = Math.ceil((this.viewWidth - shift) / CHUNK_WIDTH);
-      const ink = mixColor(quantized.sky, quantized.ink, [0.45, 0.63, 0.91][depth]);
-      const pattern = this.glyphs.pattern(ink, font);
-      pattern.setTransform(new DOMMatrix().translate(shift % 128, 0));
-      for (let index = first - 1; index <= last + 1; index++) {
-        const from = this.generator.chunk(blend.from, depth, index);
-        const to = this.generator.chunk(blend.to, depth, index);
-        if (index < first || index > last) continue;
-        const points = from.samples.map((p, i) => ({ x: p.x + shift, y: lerp(p.y, to.samples[i].y, blend.amount), shore: p.shore }));
-        const path = new Path2D();
-        path.moveTo(points[0].x, points[0].shore);
-        for (const p of points) path.lineTo(p.x, p.y);
-        for (let i = points.length - 1; i >= 0; i--) path.lineTo(points[i].x, points[i].shore);
-        path.closePath();
-        this.erase(ctx, path);
-        ctx.fillStyle = pattern; ctx.globalAlpha = 0.90; ctx.fill(path); ctx.globalAlpha = 1;
-        const snow = (blend.from === 'alpine-lake' ? 1 - blend.amount : 0) + (blend.to === 'alpine-lake' ? blend.amount : 0);
-        if (snow && depth < 2) {
-          ctx.save(); ctx.clip(path);
-          const cap = new Path2D(); cap.moveTo(points[0].x, 0);
-          for (const p of points) cap.lineTo(p.x, 150 + depth * 30 + this.generator.noise2D((p.x - shift) * 0.018, 86) * 12);
-          cap.lineTo(points[points.length - 1].x, 0); cap.closePath();
-          const snowPattern = this.glyphs.pattern(this.theme === 'dark' ? '#d7e3de' : '#a0b4b6', font);
-          snowPattern.setTransform(new DOMMatrix().translate(shift % 128, 0));
-          ctx.globalAlpha = snow; ctx.fillStyle = snowPattern; ctx.fill(cap); ctx.restore();
-        }
-        const strata = ['cliff-gorge', 'sandstone-canyon'].includes(blend.from) || ['cliff-gorge', 'sandstone-canyon'].includes(blend.to);
-        if (strata) {
-          ctx.save(); ctx.clip(path); ctx.globalAlpha = 0.65;
-          for (let y = 100 + ((index * 9 % 11) + 11) % 11; y < HORIZON; y += 14) {
-            for (let x = 0; x < CHUNK_WIDTH; x += 8) this.glyphs.stampChar(ctx, ink, 7, '=', from.x + shift + x, y + x / CHUNK_WIDTH * 9);
-          }
-          ctx.restore();
-        }
-        this.drawPlants(from, to, blend.amount, shift, depth, ink);
-      }
-    }
-    this.generator.endFrame();
-  }
-
-  private drawPlants(from: TerrainChunk, to: TerrainChunk, amount: number, shift: number, depth: number, color: string) {
-    const ctx = this.ctx;
-    const pattern = this.glyphs.pattern(color, this.detail === 'low' ? 7 : 5);
-    for (let i = 0; i < Math.max(from.plants.length, to.plants.length); i++) {
-      const left = from.plants[i], right = to.plants[i];
-      const plant = amount < 0.5 ? left ?? right : right ?? left;
-      const weight = left && right ? 1 : left ? 1 - amount : amount;
-      if (weight < 0.02) continue;
-      const x = lerp(left?.x ?? right.x, right?.x ?? left.x, amount) + shift;
-      const root = lerp(left?.root ?? right.root, right?.root ?? left.root, amount);
-      const h = lerp(left?.height ?? 0, right?.height ?? 0, amount);
-      const path = this.plantPath(x, root, h, plant.kind);
-      this.erase(ctx, path);
-      ctx.globalAlpha = depth === 1 ? 0.65 : 0.95; ctx.fillStyle = pattern; ctx.fill(path);
-    }
-    ctx.globalAlpha = 1;
-  }
-  private plantPath(x: number, root: number, height: number, kind: 'pine' | 'rock' | 'reeds') {
-    const p = new Path2D();
-    if (kind === 'rock') { p.moveTo(x - height * 0.4, root); p.lineTo(x - height * 0.27, root - height * 0.39); p.lineTo(x + height * 0.10, root - height * 0.5); p.lineTo(x + height * 0.5, root); p.closePath(); }
-    else if (kind === 'reeds') {
-      for (let i = -2; i <= 2; i++) { const at = x + i * height * 0.10; p.rect(at, root - height * (0.7 + Math.abs(i) * 0.08), 0.7, height * (0.7 + Math.abs(i) * 0.08)); p.ellipse(at, root - height * (0.7 + Math.abs(i) * 0.08), 1.2, height * 0.08, i * 0.1, 0, Math.PI * 2); }
-    } else {
-      p.rect(x - Math.max(0.7, height * 0.018), root - height, Math.max(1.4, height * 0.036), height);
-      for (let tier = 0; tier < 4; tier++) { const top = root - height + tier * height * 0.16; const spread = height * (0.10 + tier * 0.045); p.moveTo(x, top); p.lineTo(x + spread, top + height * 0.4); p.lineTo(x - spread, top + height * 0.4); p.closePath(); }
-    }
-    return p;
-  }
-
-  private erase(ctx: CanvasRenderingContext2D, path: Path2D) {
-    ctx.save();
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = '#000';
-    ctx.fill(path);
-    ctx.restore();
-  }
-
-  private waterMask() {
+  private silhouette(index: number, blend: Blend, depth: number) {
+    const step = Math.round(blend.amount * 32) / 32;
+    const key = `${index}:${blend.from}:${blend.to}:${step}:${depth}`;
+    this.usedMasks.add(key);
+    const cached = this.masks.get(key); if (cached) return cached;
+    const from = this.generator.chunk(blend.from, 2, index), to = this.generator.chunk(blend.to, 2, index);
     const path = new Path2D();
-    const shift = this.time * TRAVEL_SPEED * DEPTH_FACTORS[2];
-    path.moveTo(0, this.generator.shoreline(-shift));
-    for (let x = 0; x <= this.viewWidth + 8; x += 8) path.lineTo(x, this.generator.shoreline(x - shift));
-    path.lineTo(this.viewWidth, WORLD_HEIGHT); path.lineTo(0, WORLD_HEIGHT); path.closePath();
-    return path;
-  }
-  /** Reflections resample scene geometry into upright glyphs, never stretch a bitmap. */
-  private reflectionDepth(x: number, y: number, blend: Blend) {
-    let result = -1;
-    for (let depth = 0; depth < 3; depth++) {
-      const wx = x - this.time * TRAVEL_SPEED * DEPTH_FACTORS[depth];
-      const height = lerp(this.generator.height(blend.from, depth, wx), this.generator.height(blend.to, depth, wx), blend.amount);
-      if (y >= height && y <= this.generator.shoreline(wx)) result = depth;
+    const root = this.bank + 2;
+    const fromKind = biome(blend.from).kind, toKind = biome(blend.to).kind;
+    const treeMix = (fromKind === 'pine' ? 1 - step : 0) + (toKind === 'pine' ? step : 0);
+    path.moveTo(-1, root);
+    const amplitude = (kind: string) => kind === 'pine' ? 0.30 : kind === 'snow' ? 0.80 : kind === 'reeds' ? 0.55 : 0.92;
+    for (let i = 0; i < from.samples.length; i++) {
+      const sample = from.samples[i];
+      const relief = lerp((302 - sample.y) * amplitude(fromKind), (302 - to.samples[i].y) * amplitude(toKind), step);
+      path.lineTo(sample.x - index * TILE, root - relief / 240 * this.height);
     }
-    return result;
+    path.lineTo(TILE + 1, root); path.closePath();
+    if (treeMix > 0.01) {
+      path.rect(-1, root - this.height * 0.17 * treeMix, TILE + 2, this.height * 0.17 * treeMix + 1);
+      const plants = fromKind === 'pine' ? from.plants : to.plants;
+      for (let i = 0; i < plants.length; i += 3) {
+        const plant = plants[i];
+        const x = plant.x - index * TILE;
+        const h = this.height * (0.26 + plant.height / 55 * 0.43) * (depth ? 1 : 0.82) * treeMix;
+        const width = h * 0.21;
+        path.rect(x - 1, root - h, 2, h);
+        for (let tier = 0; tier < 5; tier++) {
+          const top = root - h + tier * h * 0.15;
+          const spread = width * (0.3 + tier * 0.17);
+          path.moveTo(x, top); path.lineTo(x + spread, top + h * 0.43); path.lineTo(x - spread, top + h * 0.43); path.closePath();
+        }
+      }
+    }
+    if ((fromKind === 'reeds' ? 1 - step : 0) + (toKind === 'reeds' ? step : 0) > 0.01) {
+      const plants = fromKind === 'reeds' ? from.plants : to.plants;
+      const weight = (fromKind === 'reeds' ? 1 - step : 0) + (toKind === 'reeds' ? step : 0);
+      for (const plant of plants) {
+        const h = plant.height / 55 * this.height * 0.23 * weight;
+        path.rect(plant.x - index * TILE, root - h, 1, h);
+      }
+    }
+    this.masks.set(key, path); return path;
+  }
+  private drawForest(blend: Blend, reflection = false) {
+    const ctx = this.ctx;
+    const shift = this.time * 6;
+    const first = Math.floor(-shift / TILE), last = Math.floor((this.width - shift) / TILE);
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out'; ctx.fillStyle = '#000';
+    ctx.globalAlpha = reflection ? 0.20 : 1;
+    if (reflection) { ctx.translate(0, this.bank * 2); ctx.scale(1, -1); }
+    for (let index = first - 1; index <= last + 1; index++) {
+      const path = this.silhouette(index, blend, 1);
+      ctx.save(); ctx.translate(this.snap(index * TILE + shift), 0); ctx.fill(path); ctx.restore();
+    }
+    ctx.restore();
   }
   private drawWater(blend: Blend) {
-    const ctx = this.water.getContext('2d', { willReadFrequently: true })!;
-    const colors = palette(blend, this.theme);
-    const wave = lerp(biome(blend.from).wave, biome(blend.to).wave, blend.amount);
-    const w = this.viewWidth;
-    ctx.clearRect(0, 0, this.viewWidth + 1, WORLD_HEIGHT);
-    ctx.save(); ctx.clip(this.waterMask());
-    const columns = this.detail === 'low' ? 65 : this.detail === 'high' ? 140 : 105;
-    const rows = this.detail === 'low' ? 20 : this.detail === 'high' ? 40 : 30;
-    const ink = mixColor(colors.water, colors.ink, 0.70);
-    const reflectedInk = mixColor(colors.sky, colors.ink, this.theme === 'dark' ? 0.65 : 0.60);
-    const shine = this.theme === 'dark' ? '#d5ddb4' : '#697c53';
-    for (let row = 0; row < rows; row++) {
-      const d = row / rows;
-      const y = HORIZON + 4 + Math.pow(d, 1.25) * (WORLD_HEIGHT - HORIZON - 2);
-      const spacing = w / columns * (0.7 + d * 0.55);
-      const font = 7 + Math.floor(d * 2);
-      const travel = this.time * (3 + d * 12) % spacing;
-      const sourceY = HORIZON - (y - HORIZON) * 0.83;
-      const distortion = Math.sin(y * 0.18 + this.time * 0.7) * (1 + d * 5) * wave;
-      for (let x = -spacing; x < w + spacing; x += spacing) {
-        const at = x + travel;
-        const flow = Math.sin(x * 0.015 - this.time * 0.4 + row * 0.55);
-        const ripple = Math.sin(x * 0.081 + row * 3.1 + this.time * 0.9) * 0.35;
-        const n = this.generator.noise2D(x * 0.014 - this.time * 0.07, row * 0.18);
-        const strength = flow * 0.42 + ripple + n * 0.35;
-        const sunlight = Math.max(0, 1 - Math.abs(x / w - 0.64) / (0.04 + d * 0.2));
-        const depth = this.reflectionDepth(at + distortion, sourceY, blend);
-        // One upright ASCII character per water cell: reflection, ripple or glint.
-        if (strength + sunlight * 0.9 > 0.90) {
-          ctx.globalAlpha = 0.45 + sunlight * 0.45;
-          this.glyphs.stampChar(ctx, shine, 8, '*', at, y);
-        } else if (depth >= 0 && strength < 0.38) {
-          ctx.globalAlpha = 0.23 + depth * 0.10;
-          this.glyphs.stampChar(ctx, reflectedInk, font, ['.', ':', '='][depth], at, y);
-        } else if (strength > 0.04) {
-          ctx.globalAlpha = 0.2 + Math.max(0, strength) * 0.45;
-          this.glyphs.stampChar(ctx, ink, font, strength > 0.4 ? '~' : strength > 0.2 ? '-' : '.', at, y);
-        } else if (sourceY < 220) {
-          const cloud = this.generator.noise3D((at + distortion - this.time * 3.4) * 0.006, sourceY * 0.018, this.time * 0.008);
-          if (cloud > 0.32) { ctx.globalAlpha = 0.20; this.glyphs.stampChar(ctx, reflectedInk, 7, '.', at, y); }
-        }
+    const kind = blend.amount > 0.5 ? blend.to : blend.from;
+    const waterHeight = this.height - this.bank;
+    const bandHeight = Math.ceil(waterHeight / 3);
+    for (let band = 0; band < 3; band++) {
+      const shift = this.time * [9, 16, 25][band];
+      const first = Math.floor(-shift / TILE), last = Math.floor((this.width - shift) / TILE);
+      for (let index = first; index <= last; index++) {
+        const key = `water:${index}:${band}:${kind}:${this.theme}`;
+        const tile = this.texture(key, bandHeight + this.rowHeight, (context) => this.drawRows(context, bandHeight + this.rowHeight, index, (x, y) => {
+          const row = y / this.rowHeight + band * 19;
+          const broad = this.generator.noise2D(x * 0.0045, row * 0.17 + 71);
+          const wave = Math.sin(row * 1.33 + this.generator.noise2D(x * 0.0018, row * 0.1) * 2.8);
+          const sparkle = Math.sin(x * 0.031 + row * 3.7) * 0.14;
+          const shore = band === 0 ? 0.55 : 0.74;
+          return Math.max(0, broad * 0.52 + wave * 0.44 + sparkle + shore - 0.22);
+        }, 1100 + band * 227));
+        this.ctx.globalAlpha = band === 0 ? 0.73 : 0.85 + Math.sin(this.time * 0.28 + band) * 0.07;
+        this.ctx.drawImage(tile.canvas, this.snap(index * TILE + shift), this.bank + band * bandHeight, tile.width, tile.height);
       }
     }
-    ctx.restore();
+    this.ctx.globalAlpha = 1;
   }
-
-  private drawForeground(blend: Blend) {
-    const ctx = this.front;
-    ctx.clearRect(0, 0, this.viewWidth, WORLD_HEIGHT);
-    const colors = palette(blend, this.theme);
-    const id = blend.amount > 0.5 ? blend.to : blend.from;
-    const b = biome(id);
-    const shift = this.time * TRAVEL_SPEED;
-    const first = Math.floor(-shift / CHUNK_WIDTH);
-    for (let chunk = first; chunk <= Math.ceil((this.viewWidth - shift) / CHUNK_WIDTH); chunk++) {
-      for (let i = 0; i < 4; i++) {
-        const worldX = chunk * CHUNK_WIDTH + i * 91 + 21;
-        const x = worldX + shift;
-        const margin = this.viewWidth * 0.11;
-        if (x > margin && x < this.viewWidth - margin || this.width < 600 && x < this.viewWidth / 2) continue;
-        const n = this.generator.noise2D(worldX * 0.021, 18);
-        const h = 38 + (n + 1) * (b.kind === 'pine' ? 48 : b.kind === 'reeds' ? 24 : 12);
-        const root = 526 + this.generator.noise2D(worldX * 0.01, 55) * 5;
-        const kind = b.kind === 'pine' || b.kind === 'snow' ? 'pine' : b.kind === 'reeds' ? 'reeds' : 'rock';
-        const ground = new Path2D(); ground.ellipse(x, root + 2, h * 0.65, 28, 0, 0, Math.PI * 2);
-        this.erase(this.ctx, ground);
-        ctx.globalAlpha = 0.7; ctx.fillStyle = this.glyphs.pattern(colors.ink, 7); ctx.fill(ground);
-        const shape = this.plantPath(x, root, h, kind);
-        this.erase(this.ctx, shape);
-        ctx.globalAlpha = 0.9; ctx.fillStyle = this.glyphs.pattern(colors.ink, 7); ctx.fill(shape);
-        ctx.globalAlpha = 1;
-      }
+  private drawShore() {
+    this.front.clearRect(0, 0, this.width, this.height);
+    this.front.font = `${this.fontSize}px ${MONO}`; this.front.fillStyle = this.inks[1];
+    const chars = '. : . . :';
+    for (let x = 0; x < this.width; x += 93) {
+      const n = this.generator.noise2D(x * 0.006, 99);
+      if (n > -0.1) this.front.fillText(chars, x, this.bank + Math.round(n * 5));
     }
   }
-
+  private renderSprite() {
+    const scale = this.width < 600 ? 3 : 4;
+    const y = Math.round(this.height * 0.835 + Math.sin(this.time * 0.8) * 0.7);
+    const phase = `${this.activity}:${Math.floor(this.time * 1.3) % 2}:${this.theme}`;
+    if (!this.dirty && y === this.lastSpriteY && phase === this.lastSpritePhase && this.activity !== 'row') return;
+    this.lastSpriteY = y; this.lastSpritePhase = phase;
+    this.sprite.clearRect(0, 0, this.width, this.height);
+    this.friend.draw(this.sprite, Math.round(this.width * 0.5), y, scale, this.time, this.activity, this.theme === 'dark');
+  }
   private render() {
-    const ctx = this.ctx, w = this.viewWidth;
+    this.usedTiles.clear(); this.usedMasks.clear(); this.generator.beginFrame();
+    this.host.style.backgroundColor = this.paper;
+    this.ctx.clearRect(0, 0, this.width, this.height);
     const blend = this.journey.blend;
-    const colors = palette(blend, this.theme);
-    // The single flat page color is the only backdrop; all scenery is glyph paint.
-    this.host.style.backgroundColor = colors.sky;
-    ctx.clearRect(0, 0, w, WORLD_HEIGHT);
-    for (let y = -16; y <= 16; y += 8) for (let x = -16; x <= 16; x += 8) {
-      if (x * x + y * y > 16 * 16 || this.theme === 'dark' && x < -4) continue;
-      ctx.globalAlpha = 0.65;
-      this.glyphs.stampChar(ctx, mixColor(colors.sun, colors.ink, this.theme === 'dark' ? 0.05 : 0.42), 9, Math.abs(x) + Math.abs(y) < 10 ? 'O' : 'o', w * 0.64 + x, 88 + y);
-    }
-    ctx.globalAlpha = 1;
-    if (this.time - this.lastCloud >= (this.detail === 'low' ? 0.24 : 0.12)) { this.drawClouds(blend); this.lastCloud = this.time; }
-    ctx.drawImage(this.clouds, 0, 0, this.viewWidth, 250);
-    this.drawTerrain(blend);
-    if (this.time - this.lastWater >= (this.detail === 'low' ? 0.15 : 0.065)) {
-      this.drawWater(blend); this.lastWater = this.time;
-    }
-    this.erase(ctx, this.waterMask());
-    ctx.save(); ctx.clip(this.waterMask()); ctx.drawImage(this.water, 0, 0, this.viewWidth, WORLD_HEIGHT); ctx.restore();
-    // Mist follows the same bank instead of leaving independent floating silhouettes.
-    if (blend.from === 'reed-wetland' || blend.to === 'reed-wetland') {
-      ctx.globalAlpha = 0.25;
-      for (let x = 0; x < w; x += 11) this.glyphs.stampChar(ctx, mixColor(colors.sky, colors.ink, 0.5), 8, '~', x, HORIZON - 7 + Math.sin(x * 0.01 + this.time * 0.1) * 3);
-      ctx.globalAlpha = 1;
-    }
-    this.sprite.clearRect(0, 0, w, WORLD_HEIGHT);
-    const x = this.width < 600 ? Math.max(44, (this.width - 185) / 2) / this.scale : w * 0.46;
-    const spriteScale = this.width < 360 ? 1.3 : this.width < 600 ? 1.7 : 2;
-    this.friend.draw(this.sprite, x, 402, spriteScale, this.time, this.activity, this.theme === 'dark');
-    this.drawForeground(blend);
+    this.drawSky(blend); this.drawForest(blend); this.drawWater(blend); this.drawForest(blend, true);
+    this.renderSprite();
+    if (this.dirty) this.drawShore();
+    this.generator.endFrame();
+    for (const key of this.tiles.keys()) if (!this.usedTiles.has(key)) this.tiles.delete(key);
+    for (const key of this.masks.keys()) if (!this.usedMasks.has(key)) this.masks.delete(key);
     this.notify();
   }
-
+  getDiagnostics(): Diagnostics {
+    const sorted = [...this.timings].sort((a, b) => a - b);
+    const frameRate = this.frameTimes.length > 1 ? (this.frameTimes.length - 1) * 1000 / (this.frameTimes.at(-1)! - this.frameTimes[0]) : 0;
+    return { quality: this.quality, effectiveQuality: this.quality, chunks: this.masks.size, glyphCaches: this.tiles.size, renderedFrames: this.renderedFrames, averageRenderMs: this.timings.reduce((a, b) => a + b, 0) / (this.timings.length || 1), p95RenderMs: sorted[Math.floor(sorted.length * 0.95)] ?? 0, time: this.time, state: this.config, blend: this.journey.blend, dpr: this.dpr, effectScale: 1, fontSize: this.fontSize, frameRate, layerBuilds: this.layerBuilds, cacheBytes: [...this.tiles.values()].reduce((bytes, tile) => bytes + tile.canvas.width * tile.canvas.height * 4, 0) };
+  }
   private tick = (now: number) => {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.tick);
-    if (document.hidden || !this.width || !this.height) { this.last = 0; return; }
-    if (!this.dirty && (!this.motion || this.last && now - this.last < 1000 / 30)) return;
-    const delta = this.last ? Math.max(0, (now - this.last) / 1000) : 0;
-    this.last = now;
+    if (document.hidden || !this.width || !this.height) { this.lastTime = this.lastPaint = 0; return; }
+    const delta = this.lastTime ? Math.max(0, (now - this.lastTime) / 1000) : 0;
+    this.lastTime = now;
     if (this.motion) { this.time += delta; this.journey.advance(delta); }
+    if (!this.dirty && !this.motion) return;
+    if (!this.dirty && this.lastPaint && now - this.lastPaint < 1000 / 60 - 1) return;
+    this.lastPaint = now;
     const start = performance.now();
     try { this.render(); } catch { this.dispose(); this.onFailure(); return; }
-    this.timings.push(performance.now() - start);
-    if (this.timings.length > 120) this.timings.shift();
-    this.renderedFrames++;
-    this.dirty = false;
-    if (this.quality === 'auto' && !this.constrained && this.timings.length >= 30 && this.timings.slice(-30).reduce((a, b) => a + b, 0) / 30 > 28) {
-      this.constrained = true;
-      this.configureEffects();
-    }
+    this.timings.push(performance.now() - start); if (this.timings.length > 120) this.timings.shift();
+    this.frameTimes.push(now); if (this.frameTimes.length > 120) this.frameTimes.shift();
+    this.renderedFrames++; this.dirty = false;
   };
   dispose() {
-    this.disposed = true; cancelAnimationFrame(this.raf);
-    this.observer.disconnect(); document.removeEventListener('visibilitychange', this.onVisibility);
-    this.generator.clear(); this.glyphs.clear(); this.friend.clear();
+    this.disposed = true; cancelAnimationFrame(this.raf); this.observer.disconnect(); document.removeEventListener('visibilitychange', this.onVisibility);
+    this.generator.clear(); this.tiles.clear(); this.masks.clear(); this.friend.clear();
     this.landscape.remove(); this.companion.remove(); this.foreground.remove();
-    for (const canvas of [this.clouds, this.water]) { canvas.width = canvas.height = 0; }
   }
 }

@@ -128,6 +128,7 @@ test('timer uses elapsed wall time and can stop without stopping the room', asyn
 test('theme switch recolors the landscape and persists without resetting controls', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
+  await page.getByRole('button', { name: '화이트 모드로 전환' }).click();
   await expect(page.locator('.companion-canvas')).toBeVisible();
   await page.locator('[data-activity="fish"]').click();
   const light = await page.locator('#scene').screenshot();
@@ -146,7 +147,7 @@ test('theme switch recolors the landscape and persists without resetting control
 test('panorama flows sideways while the 2D companion stays anchored', async ({ page }) => {
   await page.goto('/');
   const bounds = await page.locator('#scene').boundingBox();
-  expect(bounds!.width / bounds!.height).toBeGreaterThan(2.4);
+  expect(bounds!.width / bounds!.height).toBeCloseTo(16 / 9, 1);
   await page.waitForTimeout(150);
   const landscape = await page.locator('.landscape-canvas').screenshot();
   await page.waitForTimeout(350);

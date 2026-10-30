@@ -31,8 +31,8 @@ const paths: Record<string, string> = {
 function icon(name: string, size = 20) { return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`; }
 const activities: [Activity, string, string][] = [['rest', '쉬기', '그저, 둥둥.'], ['fish', '낚시', '기다림도 좋은 시간이야.'], ['row', '노 젓기', '조금 더 멀리 가볼까.'], ['sleep', '낮잠', '잠깐 눈을 감아도 괜찮아.'], ['look', '망원경', '저 멀리엔 무엇이 있을까.']];
 
-let theme: Theme = 'light';
-try { if (localStorage.getItem('ambmusic.theme') === 'dark') theme = 'dark'; } catch { /* Storage can be unavailable in private contexts. */ }
+let theme: Theme = 'dark';
+try { if (localStorage.getItem('ambmusic.theme.v2') === 'light') theme = 'light'; } catch { /* Storage can be unavailable in private contexts. */ }
 document.documentElement.dataset.theme = theme;
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -51,10 +51,10 @@ app.innerHTML = `
         <div class="player-top"><span class="tiny-label" id="source-label">NATURE RADIO</span><span id="audio-indicator" class="equalizer" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
         <div class="track-title" id="track-name">River, slowly</div><div class="track-artist" id="track-artist">AMBMUSIC · 물과 바람의 소리</div>
         <div class="player-bottom"><span class="track-tag" id="track-tag">GENERATIVE AMBIENCE</span><div class="track-controls"><button id="previous" class="icon-button" aria-label="이전 Spotify 곡" hidden>${icon('prev', 16)}</button><button class="icon-button play-toggle" aria-label="자연 소리 재생">${icon('play', 18)}</button><button id="next" class="icon-button" aria-label="다음 Spotify 곡" hidden>${icon('next', 16)}</button></div></div>
-        <button id="spotify-open" class="spotify-link">${icon('spotify', 16)} 내 Spotify 연결하기 ${icon('arrow', 13)}</button>
+
       </article>
       <div class="scene-coordinates" aria-hidden="true">ASCII LANDSCAPE<br>35° 12′ N &nbsp; 128° 58′ E <span>IMAGINARY COORDINATES</span></div>
-      <div class="friend-caption"><span class="friend-icon" aria-hidden="true">▟▙</span><span id="activity-caption">그저, 둥둥.</span><span class="caption-line"></span><span class="tiny-label">YOUR LITTLE COMPANION</span></div>
+      <div class="friend-caption"><span class="friend-icon" aria-hidden="true">▟▙</span><span id="activity-caption">기다림도 좋은 시간이야.</span><span class="caption-line"></span><span class="tiny-label">YOUR LITTLE COMPANION</span></div>
       <button id="exit-immersion" class="exit-immersion" hidden>${icon('expand', 16)} 몰입 모드 나가기 <kbd>ESC</kbd></button>
       <div class="scene-bottom"><span><span class="status-dot"></span> <span id="scene-status">천천히 흘러가는 중</span></span><span class="render-label">LAYERED ASCII · 2D COMPANION</span></div>
     </section>
@@ -63,9 +63,9 @@ app.innerHTML = `
       <div class="landscape-actions"><label class="sr-only" for="landscape-select">풍경 고르기</label><select id="landscape-select">${BIOMES.map((b) => `<option value="${b.id}">${b.name}</option>`).join('')}</select><button id="regenerate" class="new-landscape">${icon('refresh', 15)} 새 풍경</button><label class="journey-switch"><input id="auto-journey" type="checkbox" role="switch" checked/><span>자동 여행</span></label></div>
     </section>
     <section class="control-deck" aria-label="공간 조절">
-      <div class="activity-area"><span class="section-label">친구의 시간</span><div class="activities" role="group" aria-label="캐릭터 동작">${activities.map(([id, label]) => `<button class="activity ${id === 'rest' ? 'active' : ''}" data-activity="${id}" aria-pressed="${id === 'rest'}">${icon(id, 19)}<span>${label}</span></button>`).join('')}</div></div>
+      <div class="activity-area"><span class="section-label">친구의 시간</span><div class="activities" role="group" aria-label="캐릭터 동작">${activities.map(([id, label]) => `<button class="activity ${id === 'fish' ? 'active' : ''}" data-activity="${id}" aria-pressed="${id === 'fish'}">${icon(id, 19)}<span>${label}</span></button>`).join('')}</div></div>
       <div class="deck-divider"></div>
-      <div class="sound-area"><span class="section-label">오늘의 배경음</span><div class="sound-controls"><button class="main-play play-toggle" aria-label="자연 소리 재생">${icon('play', 21)}</button><div class="volume-control">${icon('sound', 18)}<label class="sr-only" for="volume">전체 음량</label><input id="volume" type="range" min="0" max="100" value="55" /></div><button class="icon-button labeled-button" data-dialog="mixer" aria-label="자연 소리 믹서">${icon('settings', 19)}<span>믹서</span></button></div></div>
+      <div class="sound-area"><span class="section-label">오늘의 배경음</span><div class="sound-controls"><button class="main-play play-toggle" aria-label="자연 소리 재생">${icon('play', 21)}</button><div class="volume-control">${icon('sound', 18)}<label class="sr-only" for="volume">전체 음량</label><input id="volume" type="range" min="0" max="100" value="55" /></div><button class="icon-button labeled-button" data-dialog="mixer" aria-label="자연 소리 믹서">${icon('settings', 19)}<span>믹서</span></button><button id="spotify-open" class="spotify-connect-control">${icon('spotify', 16)}<span>Spotify 연결</span></button></div></div>
       <div class="deck-divider second-divider"></div>
       <div class="utility-area"><button class="utility-button" data-dialog="timer" aria-label="집중 타이머">${icon('clock', 20)}<span id="timer-label">타이머</span></button><button class="utility-button" id="immersion" aria-label="몰입 모드">${icon('expand', 20)}<span>몰입하기</span></button><button class="icon-button settings-button" data-dialog="settings" aria-label="장면 설정">${icon('settings', 20)}</button></div>
     </section>
@@ -73,7 +73,7 @@ app.innerHTML = `
   </main>
   <dialog id="mixer-dialog"><div class="dialog-heading"><div><span class="eyebrow">MAKE YOUR OWN QUIET</span><h2>나만의 고요</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><p>오늘은 어떤 소리가 필요한가요?</p><div class="mixer-sliders">${([['water', '흐르는 물', 55], ['wind', '숲의 바람', 25], ['birds', '멀리서 들리는 새', 30]] as const).map(([id, label, value]) => `<label>${icon(id)}<span>${label}</span><input type="range" data-sound="${id}" min="0" max="100" value="${value}" aria-label="${label} 음량"/><output>${value}%</output></label>`).join('')}</div><p class="dialog-footnote">브라우저에서 만들어지는 자연의 소리예요.<br>재생 버튼을 누르면 소리가 시작됩니다.</p></dialog>
   <dialog id="timer-dialog"><div class="dialog-heading"><div><span class="eyebrow">A MOMENT, JUST FOR YOU</span><h2>잠깐 머무르기</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><p>시간이 다 되면 조용히 알려드릴게요.</p><div class="timer-presets">${[15, 25, 45].map((m) => `<button data-minutes="${m}">${m}<small>분</small></button>`).join('')}</div><p id="timer-detail" class="dialog-footnote">타이머 없이 오래 머물러도 괜찮아요.</p><button id="timer-stop" class="secondary-button" hidden>타이머 끝내기</button></dialog>
-  <dialog id="settings-dialog"><div class="dialog-heading"><div><span class="eyebrow">SETTLE IN</span><h2>편안한 쪽으로</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><label class="setting-row"><span>배경 움직임<small>레이어의 좌우 흐름과 친구의 움직임</small></span><input id="motion" type="checkbox" role="switch" ${matchMedia('(prefers-reduced-motion: reduce)').matches ? '' : 'checked'} /></label><label class="setting-row"><span>친구의 자유 시간<small>약 45초마다 동작을 바꿔요</small></span><input id="auto-activity" type="checkbox" role="switch" checked /></label><label class="setting-row"><span>문자 해상도<small>낮추면 기기의 부담이 줄어들어요</small></span><select id="quality"><option value="auto">자동</option><option value="low">가볍게</option><option value="high">선명하게</option></select></label></dialog>
+  <dialog id="settings-dialog"><div class="dialog-heading"><div><span class="eyebrow">SETTLE IN</span><h2>편안한 쪽으로</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><label class="setting-row"><span>배경 움직임<small>레이어의 좌우 흐름과 친구의 움직임</small></span><input id="motion" type="checkbox" role="switch" ${matchMedia('(prefers-reduced-motion: reduce)').matches ? '' : 'checked'} /></label><label class="setting-row"><span>친구의 자유 시간<small>약 45초마다 동작을 바꿔요</small></span><input id="auto-activity" type="checkbox" role="switch" checked /></label><label class="setting-row"><span>배경 디테일<small>글자는 선명하게, 풍경의 복잡도를 조절해요</small></span><select id="quality"><option value="auto">자동</option><option value="low">가볍게</option><option value="high">풍부하게</option></select></label></dialog>
   <dialog id="spotify-dialog"><div class="dialog-heading"><div><span class="eyebrow">YOUR MUSIC, YOUR LITTLE WORLD</span><h2>좋아하는 음악과 함께</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><p>Spotify를 연결하고 나만의 음악을 이 작은 강으로 가져오세요.</p><div class="spotify-note">${icon('spotify', 28)}<span>브라우저에서 음악을 재생하려면<br><strong>Spotify Premium</strong>이 필요해요.</span></div><p id="spotify-setup-note" class="dialog-footnote"></p><button id="spotify-connect" class="primary-button">${icon('spotify', 19)} Spotify로 연결</button><a class="external-link" href="https://open.spotify.com/" target="_blank" rel="noopener noreferrer">Spotify에서 음악 선택하기 ${icon('arrow', 14)}</a><button id="spotify-disconnect" class="secondary-button" hidden>Spotify 연결 해제</button></dialog>
   <dialog id="about-dialog"><div class="dialog-heading"><div><span class="eyebrow">HELLO, DRIFTER.</span><h2>잘 쉬는 것도, 좋은 하루.</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><p>끝없이 흘러가는 강과 작은 노란 친구.<br>할 일도, 도착해야 할 곳도 없는 공간이에요.</p><p>물소리를 켜거나 좋아하는 음악을 가져오세요.<br>친구는 자기만의 속도로 하루를 보낼 거예요.</p><div class="about-keys"><span><kbd>SPACE</kbd> 소리 재생 / 정지</span><span><kbd>F</kbd> 몰입하기</span><span><kbd>ESC</kbd> 돌아오기</span></div><p class="dialog-footnote">겹겹의 ASCII 풍경과 2D 픽셀 친구의 작은 세상.<br>장면은 음악의 박자나 음량과 독립적으로 흘러갑니다.<br><a class="credits-link" href="/third-party-notices.txt" target="_blank" rel="noopener noreferrer">오픈소스 고지 ↗</a></p></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
@@ -127,7 +127,7 @@ $('#theme-toggle').onclick = () => {
   theme = theme === 'light' ? 'dark' : 'light';
   document.documentElement.dataset.theme = theme;
   scene?.setTheme(theme);
-  try { localStorage.setItem('ambmusic.theme', theme); } catch { /* The current session still works. */ }
+  try { localStorage.setItem('ambmusic.theme.v2', theme); } catch { /* The current session still works. */ }
   updateThemeToggle();
 };
 
@@ -217,7 +217,7 @@ document.querySelectorAll<HTMLDialogElement>('dialog').forEach((dialog) => {
   });
 });
 
-let activityIndex = 0;
+let activityIndex = 1;
 function setActivity(activity: Activity, manual = false) {
   activityIndex = activities.findIndex(([id]) => id === activity);
   scene?.setActivity(activity);

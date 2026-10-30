@@ -35,3 +35,16 @@ main{padding:20px 1.8% 0;max-width:none}.scene-shell{height:clamp(390px,39vw,580
 .scene-grain{background:none}
 #scene .scene-fallback{display:none;background:var(--scene-sky,#f0f2e9)}
 #scene.unavailable .scene-fallback{display:flex}
+
+/* Reference composition: quiet black center, white ASCII above/below, one track strip. */
+.scene-shell{aspect-ratio:16/9;height:auto;min-height:420px;max-height:none;border:0;border-radius:0;background:#222}
+.scene-heading,.scene-coordinates,.friend-caption,.scene-bottom{display:none}
+.now-playing{top:16px;right:18px;bottom:auto;display:flex;align-items:center;gap:10px;width:auto;max-width:calc(100% - 36px);min-height:34px;padding:7px 10px;background:#111;box-shadow:none;border:1px solid #45453f;color:#deded6;font-family:var(--mono)}
+.now-playing .player-top,.now-playing .track-tag{display:none}.now-playing .track-title{font-size:11px;letter-spacing:0;margin:0;max-width:180px}.now-playing .track-artist{font-size:10px;margin:0;max-width:180px;color:#aeaea7}.now-playing .player-bottom{display:flex;margin:0;min-height:20px;flex-shrink:0}.now-playing .icon-button{height:20px;width:20px}.now-playing .track-controls{gap:0}.now-playing .track-controls svg{width:13px;height:13px}
+.spotify-connect-control{display:flex;align-items:center;gap:6px;font-size:10px;min-height:34px;white-space:nowrap;--spotify-lines:var(--surface)}.sound-area{min-width:320px}.sound-controls{gap:12px}.volume-control input{width:70px}.control-deck{gap:16px}
+[data-theme=dark]{--surface:#171918;--panel:#202320;--ink:#d8dbce;--line:#343a32;background:var(--surface)}
+[data-theme=dark] .now-playing{background:#111;border-color:#45453f;box-shadow:none}.scene-grain{background:none}
+@media(min-width:1600px){.scene-shell{height:auto;max-height:1000px}.sound-area{min-width:360px}}
+@media(max-width:1150px){.control-deck{flex-wrap:wrap}.activity-area{width:100%;padding-bottom:18px;border-bottom:1px solid var(--line)}.activities{justify-content:space-between}.activity{flex:1;justify-content:center}.deck-divider{display:none}.utility-area{margin-left:auto}.sound-area{min-width:300px}.sound-controls{gap:12px}}
+@media(max-width:600px){.scene-shell{height:420px;aspect-ratio:auto;min-height:420px;max-height:none}.now-playing{top:12px;right:12px;bottom:auto;min-height:30px;padding:5px 8px;max-width:calc(100% - 24px);gap:7px}.now-playing .track-title{max-width:145px;font-size:10px}.now-playing .track-artist{display:none}.sound-area{min-width:0}.sound-controls{gap:8px}.spotify-connect-control{font-size:9px;gap:4px}.spotify-connect-control span{display:none}.volume-control input{width:55px}.utility-area{gap:9px}.utility-button{font-size:9px}.control-deck{gap:12px}.spotify-connect-control{max-width:32px;overflow:hidden;white-space:nowrap}}
+.immersive .scene-shell{aspect-ratio:auto;height:100dvh;max-height:none;min-height:0}

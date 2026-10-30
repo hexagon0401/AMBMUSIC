@@ -18,7 +18,7 @@ export const WORLD_HEIGHT = 512;
 export const HORIZON = 302;
 export const TRAVEL_SPEED = 32;
 export const DEPTH_FACTORS = [0.055, 0.14, 0.32] as const;
-export const SCENE_STORAGE = 'ambmusic.scene.v1';
+export const SCENE_STORAGE = 'ambmusic.scene.v2';
 export function biome(id: BiomeId): Biome { return BIOMES.find((b) => b.id === id)!; }
 export function isBiome(id: unknown): id is BiomeId { return BIOMES.some((b) => b.id === id); }
 export function seeded(seed: number) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
@@ -35,7 +35,7 @@ export function palette(blend: Blend, theme: Theme) {
   return { sky: colors[0], mist: colors[1], ink: colors[2], water: colors[3], sun: colors[4] };
 }
 export function readSceneConfig(): SceneConfig {
-  const fallback: SceneConfig = { biome: 'pine-river', seed: freshSeed(), autoJourney: true };
+  const fallback: SceneConfig = { biome: 'pine-river', seed: 1729, autoJourney: true };
   try {
     const value = JSON.parse(localStorage.getItem(SCENE_STORAGE) || 'null');
     if (value && isBiome(value.biome) && Number.isInteger(value.seed) && value.seed >= 0 && value.seed <= 0xffffffff && typeof value.autoJourney === 'boolean') return { biome: value.biome, seed: value.seed, autoJourney: value.autoJourney };

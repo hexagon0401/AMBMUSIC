@@ -8,7 +8,7 @@ export default defineConfig({
   use: {
     baseURL,
     viewport: { width: 1440, height: 1000 },
-    launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined), args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
+    launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined), args: ['--no-sandbox', '--disable-dev-shm-usage'] },
   },
   webServer: { command: 'npm run dev -- --host 127.0.0.1', url: baseURL, reuseExistingServer: !process.env.CI },
 });
