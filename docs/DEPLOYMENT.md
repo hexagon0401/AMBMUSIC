@@ -47,4 +47,15 @@ Preview를 만든 뒤 흰색·다크 모드, 모바일, 6개 풍경, 새 풍경,
 
 기본 헤더는 카메라·마이크·위치 권한을 사용하지 않게 하고, MIME 추측 방지와 referrer 정책을 설정한다. Spotify SDK/DRM의 실제 목적지를 검증하지 않은 상태에서 엄격한 CSP나 COEP를 임의로 설정하지 않는다.
 
-현재 배포 경로는 GitHub의 `hexagon0401/AMBMUSIC` 저장소를 Vercel에서 Import하는 방식이다. 소스는 저장소 루트에 있으며 Vercel이 `npm run build`로 `dist`를 생성한다. 이 방식에는 클라우드 환경의 Vercel Token이 필요하지 않다. 클라우드 CLI로 시도한 Production 배포는 로그인 자격 증명이 없고 공식 로그인·임시 배포 요청도 네트워크 오류로 실패했으므로, 실제 Vercel 사이트가 생성되었다고 간주하지 않는다. 배포 이후 문제 발생 시 Vercel에서 이전 Deployment로 되돌릴 수 있다. seed·테마 등 로컬 설정은 브라우저에만 있으며 기기 간 동기화가 필요할 때 Supabase 도입을 별도로 설계한다.
+현재 배포 경로는 GitHub의 `hexagon0401/AMBMUSIC` main 브랜치를 연결한 Vercel 자동 배포다. 소스는 저장소 루트에 있으며 Vercel이 `npm run build`로 `dist`를 생성한다. Production 주소는 `https://ambmusic-cyan.vercel.app/`이다. 배포 문제 시 Vercel에서 이전 Deployment로 되돌릴 수 있다. 풍경·테마 설정은 브라우저에만 저장하며, 기기 간 동기화가 필요해질 때 Supabase를 별도로 검토한다.
+
+
+## 현재 Spotify 운영 설정
+
+Production 주소와 콜백은 `https://ambmusic-cyan.vercel.app/`이다. 환경 변수 이름은 대소문자를 구분한다. `VITE_SPOTIFy_CLIENT_ID` 오타를 `VITE_SPOTIFY_CLIENT_ID`로 수정했다. Client ID는 공개 식별자이며 클라우드의 프록시 시크릿 참조를 Vite 값으로 복사하면 안 된다. 액세스 토큰과 Client Secret은 배포하지 않는다.
+
+사용자는 사이트의 **Spotify 연결 → Spotify로 연결**에서 권한을 허용한다. 연결 후 창에 곡·앨범·플레이리스트 공유 링크를 붙여 재생하거나 Spotify 앱의 기기 목록에서 **AMBMUSIC**을 선택한다. 브라우저 재생은 Premium과 지원되는 DRM 브라우저가 필요하다. 개발 모드 앱은 앱 소유자의 Premium과 사용자 allowlist를 확인한다. Spotify 공식 문서상 개발 모드는 최대 5명의 인증 사용자를 지원한다. 403이면 앱의 **Users Management**에서 로그인 계정을 확인한다.
+
+PKCE 요청만 sessionStorage에 일시 저장하며 callback 직후 삭제한다. 토큰은 메모리에만 두고 만료 시 refresh token으로 갱신한다. 새로고침하면 다시 연결해야 한다. 다른 Vercel alias에서는 등록된 공식 주소로 이동해 연결하도록 안내한다. 모바일 재생은 사용자 클릭에서 `activateElement()`를 먼저 호출한다. 연결 취소·네트워크·기기 연결 시간 초과·Premium/DRM 오류와 재연결을 처리한다.
+
+공식 참고: [SDK 시작](https://developer.spotify.com/documentation/web-playback-sdk/tutorials/getting-started), [PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow), [Quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).

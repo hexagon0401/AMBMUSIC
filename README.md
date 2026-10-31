@@ -39,13 +39,13 @@ Space는 소리 재생/정지, F는 몰입 모드, Esc는 대화상자/몰입 �
 2. `.env.example`을 `.env.local`로 복사하고 **공개 Client ID**를 `VITE_SPOTIFY_CLIENT_ID`에 넣습니다. **Client Secret은 넣지 않습니다.**
 3. `VITE_SPOTIFY_REDIRECT_URI`를 앱에 등록한 값과 정확히 맞춥니다. 개발 기본값은 `http://127.0.0.1:5173/`입니다. 배포 도메인에서는 HTTPS 주소를 등록합니다. 이 값은 브라우저에서 보는 주소 및 경로와 일치해야 합니다.
 4. 서버를 다시 시작하거나 배포 빌드를 새로 만듭니다. Vite 변수는 빌드 시 공개 코드에 포함됩니다.
-5. Premium 계정으로 연결합니다. Spotify 앱에서 음악을 고르고 AMBMUSIC 기기를 선택합니다. 이 화면에서 재생/정지, 곡 이동, 음량을 조절할 수 있습니다.
+5. Premium 계정으로 연결합니다. 연결 창에 Spotify 곡·앨범·플레이리스트 공유 링크를 넣어 재생하거나, Spotify 앱에서 음악을 고르고 AMBMUSIC 기기를 선택합니다. 이 화면에서 재생/정지, 곡 이동, 음량을 조절할 수 있습니다.
 
 OAuth PKCE의 임시 state/verifier만 sessionStorage에 저장합니다. 토큰은 메모리에만 있으므로 새로고침하면 다시 연결합니다. 아티스트와 곡명은 SDK의 실제 상태를 사용하며 계정 연결 전에는 자연 소리 정보를 보여줍니다. 연결 해제 시 메모리 토큰과 SDK 연결을 정리합니다.
 
 필요한 네트워크 목적지는 `accounts.spotify.com`, `api.spotify.com`, `sdk.scdn.co`이며 실제 SDK/DRM 미디어 재생에 필요한 추가 목적지는 실제 로그인 테스트에서 확인해야 합니다. 초기 로드와 자연 소리는 외부 폰트·이미지·음원 요청 없이 동작합니다.
 
-현재 환경에는 Spotify Client ID/Premium 테스트 계정이 없어 **실제 OAuth 성공·음악 재생·DRM·갱신 흐름은 검증하지 않았습니다.** 공개 출시 전에는 Spotify 최신 정책, 시각 장면과 재생의 결합 허용 범위, 메타데이터와 브랜딩 요구사항을 확인해야 합니다. 정책상 결합이 허용되지 않으면 외부 Spotify 재생 링크로 범위를 조정합니다.
+Premium 실계정 인증은 사용자가 직접 진행해야 하므로 **실제 OAuth 성공·음악 재생·DRM·갱신 흐름은 검증하지 않았습니다.** 공개 출시 전에는 Spotify 최신 정책, 시각 장면과 재생의 결합 허용 범위, 메타데이터와 브랜딩 요구사항을 확인해야 합니다. 정책상 결합이 허용되지 않으면 외부 Spotify 재생 링크로 범위를 조정합니다.
 
 ## 검증
 
@@ -56,7 +56,7 @@ npm run test:e2e
 
 E2E는 실제 Chromium의 Canvas 2D와 AudioContext를 사용합니다. 클라우드에서는 `/usr/bin/chromium`을 사용합니다. 다른 환경에서는 `PLAYWRIGHT_CHROMIUM_EXECUTABLE`로 실행 경로를 지정하거나 `npx playwright install chromium`으로 Playwright 브라우저를 설치합니다.
 
-현재 검사: 데스크톱 상호작용, 실제 오디오 시작·정지, 모바일 가로 넘침, 믹서, 타이머 종료, 몰입 모드, 정지 장면 갱신, Canvas 폴백, 모션 감소, 위조 OAuth 콜백 거부, 테마 변경과 저장, 넓은 화면 비율 및 수평 이동. 추가로 24개 화면 조합(6풍경×2테마×2화면), 시드 재현·경계 연결·식생 뿌리, 여행 전환·중지·탭 복귀, 캐시 제한과 렌더 비용을 검사합니다. Spotify의 성공 흐름을 테스트한 것은 아닙니다. Safari/iOS 및 실기기 전력·프레임 성능 측정은 후속 작업입니다.
+현재 검사: 데스크톱 상호작용, 실제 오디오 시작·정지, 모바일 가로 넘침, 믹서, 타이머 종료, 몰입 모드, 정지 장면 갱신, Canvas 폴백, 모션 감소, 위조 OAuth 콜백 거부, 테마 변경과 저장, 넓은 화면 비율 및 수평 이동. 추가로 24개 화면 조합(6풍경×2테마×2화면), 시드 재현·경계 연결·식생 뿌리, 여행 전환·중지·탭 복귀, 캐시 제한과 렌더 비용을 검사합니다. Spotify 로그인 콜백·기기 전환·링크 재생·만료 갱신·실패 복구는 모의 서버 응답으로 검증합니다. 실제 계정의 음악 재생 검증은 별도입니다. Safari/iOS 및 실기기 전력·프레임 성능 측정은 후속 작업입니다.
 
 자세한 설계, 최적화 선택, Spotify 제약과 확장 아이디어는 [구현 계획](docs/IMPLEMENTATION_PLAN.md)을 참고하세요. 기본 자연 소리는 합성음이며 실제 현장 녹음은 아닙니다.
 
@@ -69,4 +69,4 @@ E2E는 실제 Chromium의 Canvas 2D와 AudioContext를 사용합니다. 클라�
 - [Vercel 배포 절차](docs/DEPLOYMENT.md)
 - [검증 결과와 측정 한계](docs/VALIDATION.md)
 
-Vercel 설정은 저장소 루트, Vite, Node.js 24, `npm run build`, 출력 `dist`입니다. 기본 Preview는 Spotify 환경 변수 없이 사용할 수 있습니다. Production의 선택적 Spotify 연동만 공개 Client ID와 고정 HTTPS 콜백 주소를 별도로 설정합니다. Supabase는 사용하지 않으며 실제 외부 배포는 수행하지 않았습니다.
+Vercel 설정은 저장소 루트, Vite, Node.js 24, `npm run build`, 출력 `dist`입니다. 기본 Preview는 Spotify 환경 변수 없이 사용할 수 있습니다. Production의 선택적 Spotify 연동만 공개 Client ID와 고정 HTTPS 콜백 주소를 별도로 설정합니다. Supabase는 사용하지 않습니다. Production 주소는 https://ambmusic-cyan.vercel.app/ 입니다.

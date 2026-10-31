@@ -49,7 +49,7 @@ app.innerHTML = `
       <div class="scene-heading"><span class="eyebrow"><span id="landscape-room">THE RIVER ROOM</span> <span class="slash">/</span> <span id="landscape-number">001</span></span><h1>어디에도 서두르지 않는 곳.</h1><p>Somewhere between doing and dreaming.</p></div>
       <article class="now-playing" aria-label="현재 재생 정보">
         <div class="player-top"><span class="tiny-label" id="source-label">NATURE RADIO</span><span id="audio-indicator" class="equalizer" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
-        <div class="track-title" id="track-name">River, slowly</div><div class="track-artist" id="track-artist">AMBMUSIC · 물과 바람의 소리</div>
+        <a class="track-title" id="track-name">River, slowly</a><div class="track-artist" id="track-artist">AMBMUSIC · 물과 바람의 소리</div>
         <div class="player-bottom"><span class="track-tag" id="track-tag">GENERATIVE AMBIENCE</span><div class="track-controls"><button id="previous" class="icon-button" aria-label="이전 Spotify 곡" hidden>${icon('prev', 16)}</button><button class="icon-button play-toggle" aria-label="자연 소리 재생">${icon('play', 18)}</button><button id="next" class="icon-button" aria-label="다음 Spotify 곡" hidden>${icon('next', 16)}</button></div></div>
 
       </article>
@@ -74,7 +74,7 @@ app.innerHTML = `
   <dialog id="mixer-dialog"><div class="dialog-heading"><div><span class="eyebrow">MAKE YOUR OWN QUIET</span><h2>나만의 고요</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><p>오늘은 어떤 소리가 필요한가요?</p><div class="mixer-sliders">${([['water', '흐르는 물', 55], ['wind', '숲의 바람', 25], ['birds', '멀리서 들리는 새', 30]] as const).map(([id, label, value]) => `<label>${icon(id)}<span>${label}</span><input type="range" data-sound="${id}" min="0" max="100" value="${value}" aria-label="${label} 음량"/><output>${value}%</output></label>`).join('')}</div><p class="dialog-footnote">브라우저에서 만들어지는 자연의 소리예요.<br>재생 버튼을 누르면 소리가 시작됩니다.</p></dialog>
   <dialog id="timer-dialog"><div class="dialog-heading"><div><span class="eyebrow">A MOMENT, JUST FOR YOU</span><h2>잠깐 머무르기</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><p>시간이 다 되면 조용히 알려드릴게요.</p><div class="timer-presets">${[15, 25, 45].map((m) => `<button data-minutes="${m}">${m}<small>분</small></button>`).join('')}</div><p id="timer-detail" class="dialog-footnote">타이머 없이 오래 머물러도 괜찮아요.</p><button id="timer-stop" class="secondary-button" hidden>타이머 끝내기</button></dialog>
   <dialog id="settings-dialog"><div class="dialog-heading"><div><span class="eyebrow">SETTLE IN</span><h2>편안한 쪽으로</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><label class="setting-row"><span>배경 움직임<small>레이어의 좌우 흐름과 친구의 움직임</small></span><input id="motion" type="checkbox" role="switch" ${matchMedia('(prefers-reduced-motion: reduce)').matches ? '' : 'checked'} /></label><label class="setting-row"><span>친구의 자유 시간<small>약 45초마다 동작을 바꿔요</small></span><input id="auto-activity" type="checkbox" role="switch" checked /></label><label class="setting-row"><span>배경 디테일<small>글자는 선명하게, 풍경의 복잡도를 조절해요</small></span><select id="quality"><option value="auto">자동</option><option value="low">가볍게</option><option value="high">풍부하게</option></select></label></dialog>
-  <dialog id="spotify-dialog"><div class="dialog-heading"><div><span class="eyebrow">YOUR MUSIC, YOUR LITTLE WORLD</span><h2>좋아하는 음악과 함께</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><p>Spotify를 연결하고 나만의 음악을 이 작은 강으로 가져오세요.</p><div class="spotify-note">${icon('spotify', 28)}<span>브라우저에서 음악을 재생하려면<br><strong>Spotify Premium</strong>이 필요해요.</span></div><p id="spotify-setup-note" class="dialog-footnote"></p><button id="spotify-connect" class="primary-button">${icon('spotify', 19)} Spotify로 연결</button><a class="external-link" href="https://open.spotify.com/" target="_blank" rel="noopener noreferrer">Spotify에서 음악 선택하기 ${icon('arrow', 14)}</a><button id="spotify-disconnect" class="secondary-button" hidden>Spotify 연결 해제</button></dialog>
+  <dialog id="spotify-dialog"><div class="dialog-heading"><div><span class="eyebrow">YOUR MUSIC, YOUR LITTLE WORLD</span><h2>좋아하는 음악과 함께</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><p>Spotify를 연결하고 나만의 음악을 이 작은 강으로 가져오세요.</p><div class="spotify-note">${icon('spotify', 28)}<span>브라우저에서 음악을 재생하려면<br><strong>Spotify Premium</strong>이 필요해요.</span></div><p id="spotify-setup-note" class="dialog-footnote"></p><a id="spotify-canonical" class="external-link" hidden>공식 사이트에서 연결하기 ↗</a><form id="spotify-selection" hidden><label for="spotify-link">Spotify 곡·앨범·플레이리스트 링크</label><input id="spotify-link" type="url" placeholder="https://open.spotify.com/…" required/><button class="primary-button" type="submit">이 음악 재생하기</button><p id="spotify-feedback" role="status" aria-live="polite"></p></form><button id="spotify-connect" class="primary-button">${icon('spotify', 19)} Spotify로 연결</button><a class="external-link" href="https://open.spotify.com/" target="_blank" rel="noopener noreferrer">Spotify에서 음악 선택하기 ${icon('arrow', 14)}</a><button id="spotify-disconnect" class="secondary-button" hidden>Spotify 연결 해제</button></dialog>
   <dialog id="about-dialog"><div class="dialog-heading"><div><span class="eyebrow">HELLO, DRIFTER.</span><h2>잘 쉬는 것도, 좋은 하루.</h2></div><button class="icon-button close-dialog" aria-label="닫기">${icon('close')}</button></div><p>끝없이 흘러가는 강과 작은 노란 친구.<br>할 일도, 도착해야 할 곳도 없는 공간이에요.</p><p>물소리를 켜거나 좋아하는 음악을 가져오세요.<br>친구는 자기만의 속도로 하루를 보낼 거예요.</p><div class="about-keys"><span><kbd>SPACE</kbd> 소리 재생 / 정지</span><span><kbd>F</kbd> 몰입하기</span><span><kbd>ESC</kbd> 돌아오기</span></div><p class="dialog-footnote">겹겹의 ASCII 풍경과 2D 픽셀 친구의 작은 세상.<br>장면은 음악의 박자나 음량과 독립적으로 흘러갑니다.<br><a class="credits-link" href="/third-party-notices.txt" target="_blank" rel="noopener noreferrer">오픈소스 고지 ↗</a></p></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
 `;
@@ -134,29 +134,60 @@ $('#theme-toggle').onclick = () => {
 const audio = new NatureAudio();
 let playing = false;
 let toggling = false;
-const spotify = new SpotifyConnection((state) => {
-  $('#track-name').textContent = state.track_window.current_track.name;
-  $('#track-artist').textContent = state.track_window.current_track.artists.map((a) => a.name).join(', ');
-  $('#source-label').textContent = 'SPOTIFY';
-  $('#track-tag').textContent = state.paused ? 'PAUSED' : 'NOW PLAYING';
-  playing = !state.paused;
-  void audio.setPlaying(playing).catch(() => toast('자연 소리를 시작하려면 재생 버튼을 눌러 주세요.'));
-  updatePlay();
-}, () => {
-  $('#spotify-open').innerHTML = `${icon('spotify', 16)} Spotify 연결됨 ${icon('arrow', 13)}`;
-  $('#source-label').textContent = 'SPOTIFY';
-  $('#track-name').textContent = '당신의 음악을 기다려요';
-  $('#track-artist').textContent = 'Spotify 앱에서 음악을 골라 주세요';
-  $('#track-tag').textContent = 'CONNECTED';
-  $('#previous').hidden = false;
-  $('#next').hidden = false;
-  $('#spotify-disconnect').hidden = false;
-  $('#spotify-connect').hidden = true;
-  toast('Spotify가 연결되었어요. Spotify에서 음악을 선택하고 AMBMUSIC 기기로 재생해 주세요.');
-}, toast);
-$('#spotify-setup-note').textContent = spotify.configured ? '안전한 Spotify 로그인 화면에서 연결해요. 비밀번호는 이 사이트에 저장하지 않아요.' : 'Spotify 연결을 준비 중이에요. 지금은 물소리와 바람 소리로 쉬어갈 수 있어요.';
+const spotify = new SpotifyConnection({
+  onState(state) {
+    if (!state) {
+      playing = false;
+      $('#track-name').textContent = '당신의 음악을 기다려요';
+      $('#track-name').removeAttribute('href');
+      $('#track-artist').textContent = 'Spotify 링크로 음악을 골라 주세요';
+    } else {
+      const track = state.track_window.current_track;
+      $('#track-name').textContent = track.name;
+      const id = /^spotify:track:([A-Za-z0-9]{22})$/.exec(track.uri)?.[1];
+      if (id) $<HTMLAnchorElement>('#track-name').href = `https://open.spotify.com/track/${id}`;
+      else $('#track-name').removeAttribute('href');
+      $('#track-artist').textContent = track.artists.map((a) => a.name).join(', ');
+      playing = !state.paused;
+    }
+    $('#track-tag').textContent = playing ? 'NOW PLAYING' : 'PAUSED';
+    void audio.setPlaying(playing).catch(() => toast('자연 소리를 시작하려면 재생 버튼을 눌러 주세요.'));
+    updatePlay();
+  },
+  onConnection(status) {
+    const connected = status === 'connected';
+    const connecting = status === 'connecting';
+    $('#spotify-open').innerHTML = `${icon('spotify', 16)}<span>${connected ? 'Spotify 연결됨' : connecting ? 'Spotify 연결 중…' : 'Spotify 연결'}</span>`;
+    $('#spotify-disconnect').hidden = status === 'idle';
+    $('#spotify-connect').hidden = status !== 'idle' || spotify.needsCanonicalSite;
+    $('#spotify-selection').hidden = !connected;
+    $('#previous').hidden = !connected;
+    $('#next').hidden = !connected;
+    document.querySelectorAll<HTMLButtonElement>('.play-toggle').forEach((b) => { b.disabled = connecting; });
+    if (status === 'idle') {
+      playing = false;
+      void audio.setPlaying(false);
+      $('#track-name').textContent = 'River, slowly';
+      $('#track-name').removeAttribute('href');
+      $('#track-artist').textContent = 'AMBMUSIC · 물과 바람의 소리';
+    }
+    $('#source-label').textContent = connected ? 'SPOTIFY' : 'NATURE RADIO';
+    $('#track-tag').textContent = connected ? 'CONNECTED' : 'GENERATIVE AMBIENCE';
+    $('#spotify-setup-note').textContent = connecting ? 'Spotify 재생 기기를 연결하고 있어요…' : connected ? '아래에 공유 링크를 넣거나 Spotify 앱에서 AMBMUSIC 기기를 선택해 주세요.' : spotify.configured ? 'Spotify 로그인으로 연결해요. 음악 재생에는 Premium이 필요해요.' : 'Spotify 연결을 준비 중이에요. 지금은 물소리와 바람 소리로 쉬어갈 수 있어요.';
+    updatePlay();
+  },
+  onError(message) { $('#spotify-feedback').textContent = message; toast(message); },
+});
+$('#spotify-setup-note').textContent = spotify.configured ? 'Spotify 로그인으로 연결해요. 음악 재생에는 Premium이 필요해요.' : 'Spotify 연결을 준비 중이에요. 지금은 물소리와 바람 소리로 쉬어갈 수 있어요.';
 $('#spotify-connect').toggleAttribute('disabled', !spotify.configured);
 if (!spotify.configured) $('#spotify-connect').textContent = 'Spotify 연결 준비 중';
+if (spotify.needsCanonicalSite) {
+  $('#spotify-connect').hidden = true;
+  $('#spotify-canonical').hidden = false;
+  $<HTMLAnchorElement>('#spotify-canonical').href = spotify.loginUrl!;
+}
+$('#track-name').setAttribute('target', '_blank');
+$('#track-name').setAttribute('rel', 'noopener noreferrer');
 void spotify.completeCallback().catch((e: Error) => toast(e.message));
 
 function updatePlay() {
@@ -173,7 +204,7 @@ async function togglePlay() {
   try {
     if (spotify.connected) await spotify.toggle();
     else { await audio.setPlaying(!playing); playing = !playing; updatePlay(); }
-  } catch { toast('재생을 시작하지 못했어요. 브라우저의 오디오 권한과 Spotify의 선택한 음악을 확인해 주세요.'); }
+  } catch (e) { toast(e instanceof Error ? e.message : '재생을 시작하지 못했어요.'); }
   finally { toggling = false; }
 }
 document.querySelectorAll('.play-toggle').forEach((b) => b.addEventListener('click', () => void togglePlay()));
@@ -189,21 +220,16 @@ for (const range of document.querySelectorAll<HTMLInputElement>('[data-sound]'))
 $('#previous').onclick = () => { void spotify.previous().catch(() => toast('이전 곡을 재생하지 못했어요.')); };
 $('#next').onclick = () => { void spotify.next().catch(() => toast('다음 곡을 재생하지 못했어요.')); };
 $('#spotify-connect').onclick = () => { void spotify.authorize().catch((e: Error) => toast(e.message)); };
-$('#spotify-disconnect').onclick = () => {
-  spotify.disconnect();
-  playing = false;
-  void audio.setPlaying(false);
-  updatePlay();
-  $('#track-name').textContent = 'River, slowly';
-  $('#track-artist').textContent = 'AMBMUSIC · 물과 바람의 소리';
-  $('#source-label').textContent = 'NATURE RADIO';
-  $('#track-tag').textContent = 'GENERATIVE AMBIENCE';
-  $('#spotify-open').innerHTML = `${icon('spotify', 16)} 내 Spotify 연결하기 ${icon('arrow', 13)}`;
-  $('#spotify-disconnect').hidden = true;
-  $('#spotify-connect').hidden = false;
-  $('#previous').hidden = true;
-  $('#next').hidden = true;
-  toast('Spotify 연결을 해제했어요.');
+$('#spotify-disconnect').onclick = () => { spotify.disconnect(); toast('Spotify 연결을 해제했어요.'); };
+$('#spotify-selection').onsubmit = (event) => {
+  event.preventDefault();
+  const button = $('#spotify-selection button') as HTMLButtonElement;
+  button.disabled = true;
+  $('#spotify-feedback').textContent = '음악을 불러오고 있어요…';
+  void spotify.playLink($<HTMLInputElement>('#spotify-link').value)
+    .then(() => { $('#spotify-feedback').textContent = '재생을 요청했어요.'; })
+    .catch((e: Error) => { $('#spotify-feedback').textContent = e.message; })
+    .finally(() => { button.disabled = false; });
 };
 
 function openDialog(name: string) { $<HTMLDialogElement>(`#${name}-dialog`).showModal(); }

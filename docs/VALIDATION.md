@@ -35,3 +35,8 @@ Chromium 기본 렌더링 백엔드를 사용했다. 과거 WebGL 검사에 필�
 Vercel 설정과 MIT 고지 파일을 포함한다. 로컬 프로덕션 번들에서도 모바일 조작·풍경/시드 변경·오디오/타이머 유지·OAuth 거부 경로를 다루는 3개 검사가 통과했다. 변경은 GitHub `main`에 푸시해 연결된 Vercel 프로젝트에서 다시 빌드하는 흐름을 사용한다. 실제 배포 완료 여부는 Vercel의 Deployment 상태와 발급 URL로 확인해야 한다. Spotify 실계정 로그인·DRM 재생·토큰 갱신은 기존과 같이 미검증이다.
 
 스크린샷과 측정 JSON은 검사 실행 시 `/tmp/ambmusic-artifacts`에 생성한다. 특히 `native-dpr-1.25.json`, `native-dpr-2.json`에 DPR·글자 크기·효과 배율·캐시·프레임 속도를 기록한다.
+
+
+## Spotify 연결 보완
+
+`tests/spotify.spec.ts`의 5개 브라우저 검사에서 PKCE callback과 기기 전환, 곡/앨범/플레이리스트 재생 요청, 모바일 활성화 호출, 이전/다음/음량, 토큰 갱신 중복 방지와 refresh token 보존, 만료 실패와 기기 접근 제한 복구, 오래된 SDK 이벤트 무시, URL 검증과 손상된 인증 세션 거부를 확인한다. Spotify 응답과 SDK를 대체한 검사이며 실제 계정·DRM 음원 재생 성공을 뜻하지 않는다. 기존 앱 상호작용 8개도 통과했다.
